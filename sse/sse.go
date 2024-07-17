@@ -71,6 +71,17 @@ func NewServer() *Server {
 	}
 
 	mux.HandleFunc("GET /listen", sseServer.SSETrapper())
+	mux.HandleFunc("GET /listener.js",
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/javascript")
+			w.Write([]byte(`
+        const eventSrc = new EventSource("http://localhost:8888/listen")
+        eventSrc.addEventListener("server_message", (event) => {
+          console.log(event.data)
+          window.location.reload()
+        })
+      `))
+		}))
 	return sseServer
 }
 
