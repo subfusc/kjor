@@ -50,7 +50,6 @@ func (s *Server) SSETrapper() http.HandlerFunc {
 		for {
 			select {
 			case message := <- s.MsgChan:
-				slog.Info("Got event", "msg", message)
 				fmt.Fprint(w, message.ToMessage())
 				sse.Flush()
 			case <- r.Context().Done():
