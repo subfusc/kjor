@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	"github.com/subfusc/kjor/config"
 )
 
 type Executable struct {
@@ -26,7 +28,7 @@ func ProgramNotFound(err error) error {
 	return fmt.Errorf("Failed to find program: [%v]", err)
 }
 
-func NewProcess(c *Config) (*Process, error) {
+func NewProcess(c *config.Config) (*Process, error) {
 	builder, err := exec.LookPath(c.Build.Name)
 	if err != nil {
 		return nil, ProgramNotFound(err)
@@ -100,13 +102,14 @@ func (p *Process) Restart() (error, bool) {
 		return nil, false
 	}
 
+	p.build()
+
 	p.cancel()
 	err := p.cmd.Wait()
 	if _, ok := err.(*exec.ExitError); !ok {
 		return err, false
 	}
 
-	p.build()
 	p.cmd, p.cancel = p.newCmd(p.runner)
 	p.lastRestarted = time.Now()
 

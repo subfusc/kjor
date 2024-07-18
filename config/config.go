@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"errors"
@@ -16,15 +16,21 @@ type FaConf struct {
 	Ignore []string
 }
 
+type SSEConfig struct {
+	Enable bool
+	Port int
+}
+
 type Config struct {
 	Program ProgConf
 	Build ProgConf
 	Filewatcher FaConf
+	SSE SSEConfig
 }
 
 var ConfigNotFound = errors.New("Config file not found")
 
-func defaultConfig() *Config {
+func DefaultConfig() *Config {
 	return &Config{
 		Program: ProgConf{
 			Name: "./a.out",
@@ -37,6 +43,10 @@ func defaultConfig() *Config {
 		Filewatcher: FaConf{
 			Ignore: []string{"^\\.#", "^#", "~$", "_test\\.go$", "a\\.out$"},
 		},
+		SSE: SSEConfig{
+			Enable: true,
+			Port: 8888,
+		},
 	}
 }
 
@@ -44,7 +54,7 @@ func (c *Config) IsValid() bool {
 	return c.Program.Name != "" && c.Build.Name != ""
 }
 
-func readConfig() (*Config, error) {
+func ReadConfig() (*Config, error) {
 	configFile := "kjor.toml"
 	if len(os.Args) > 1 {
 		configFile = os.Args[1]

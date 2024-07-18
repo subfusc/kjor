@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"github.com/BurntSushi/toml"
+	"github.com/subfusc/kjor/config"
 	"github.com/subfusc/kjor/fanotify_watcher"
 	"github.com/subfusc/kjor/sse"
 )
@@ -37,7 +38,7 @@ func checkSupport() {
 	}
 }
 
-func createFileWatcher(c *Config) (*fanotify_watcher.FaNotifyWatcher, error) {
+func createFileWatcher(c *config.Config) (*fanotify_watcher.FaNotifyWatcher, error) {
 	watcher, err := fanotify_watcher.NewFaNotifyWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("Got err starting watcher: %+v\n", err)
@@ -61,10 +62,10 @@ func createFileWatcher(c *Config) (*fanotify_watcher.FaNotifyWatcher, error) {
 
 func main() {
 	checkSupport()
-	cfg, err := readConfig()
+	cfg, err := config.ReadConfig()
 	switch {
-	case errors.Is(err, ConfigNotFound) :
-		cfg = defaultConfig()
+	case errors.Is(err, config.ConfigNotFound) :
+		cfg = config.DefaultConfig()
 		file, err := os.Create("kjor.toml")
 		if err != nil {
 			fmt.Println("Failed to create standard config")
@@ -88,9 +89,6 @@ func main() {
 	}
 	defer watcher.Close()
 
-	sseServer := sse.NewServer()
-	defer sseServer.Close()
-
 	proc, err := NewProcess(cfg)
 	if err != nil {
 		fmt.Println(err)
@@ -103,13 +101,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	go watcher.Start()
-	go sseServer.Start()
+	var sseServer *sse.Server
+	if cfg.SSE.Enable {
+		sseServer = sse.NewServer(cfg)
+		defer sseServer.Close()
 
-	for e := range watcher.EventStream {
-		fmt.Printf("File changed: %s\n", e.FileName)
+		go sseServer.Start()
+	}
+
+	go watcher.Start()
+
+	for range watcher.EventStream {
 		err, restarted := proc.Restart()
-		if restarted && sseServer.MsgChan != nil {
+		if cfg.SSE.Enable && restarted {
 			sseServer.MsgChan <- sse.Event{Type: "server_message", Data: map[string]bool{"restarted": true}}
 		}
 

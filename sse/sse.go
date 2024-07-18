@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+
+	"github.com/subfusc/kjor/config"
 )
 
 type Event struct {
@@ -40,14 +42,11 @@ func (s *Server) SSETrapper() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slog.Info("SSE opening socket")
 		sseHeaders(w.Header())
-		s.MsgChan = make(chan Event)
-		defer func() {
-			close(s.MsgChan)
-			s.MsgChan = nil
-			slog.Info("SSE socket closed")
+		sse := w.(http.Flusher)
+		defer func () {
+			slog.Info("Closing SSE socket")
 		}()
 
-		sse := w.(http.Flusher)
 		for {
 			select {
 			case message := <- s.MsgChan:
@@ -61,11 +60,11 @@ func (s *Server) SSETrapper() http.HandlerFunc {
 	}
 }
 
-func NewServer() *Server {
+func NewServer(c *config.Config) *Server {
 	mux := &http.ServeMux{}
 	sseServer := &Server{
 		srv: &http.Server{
-			Addr: ":8888",
+			Addr: fmt.Sprintf(":%d", c.SSE.Port),
 			Handler: mux,
 		},
 	}
@@ -74,22 +73,25 @@ func NewServer() *Server {
 	mux.HandleFunc("GET /listener.js",
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/javascript")
-			w.Write([]byte(`
-        const eventSrc = new EventSource("http://localhost:8888/listen")
+			w.Write([]byte(fmt.Sprintf(`
+        const eventSrc = new EventSource("http://localhost:%d/listen")
         eventSrc.addEventListener("server_message", (event) => {
           console.log(event.data)
+          eventSrc.close()
           window.location.reload()
         })
-      `))
+      `, c.SSE.Port)))
 		}))
 	return sseServer
 }
 
 func (s *Server) Start() {
 	slog.Info("Starting SSE server", "Addr", s.srv.Addr)
+	s.MsgChan = make(chan Event)
 	s.srv.ListenAndServe()
 }
 
 func (s *Server) Close() {
+	close(s.MsgChan)
 	s.srv.Close()
 }
