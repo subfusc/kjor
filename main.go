@@ -23,9 +23,9 @@ var banner = `
 #   #   #     #  #     #  #    #
 #    #   #####   #######  #     #
 
-GOOS:                    %s
-Fanotify Version:        %d
-DAC_READ_SEARCH capable: %t
+GOOS:                        %s
+Fanotify Version:            %d
+CAP_DAC_READ_SEARCH capable: %t
 
 `
 
@@ -41,7 +41,7 @@ func checkSupport() {
 func createFileWatcher(c *config.Config) (*fanotify_watcher.FaNotifyWatcher, error) {
 	watcher, err := fanotify_watcher.NewFaNotifyWatcher()
 	if err != nil {
-		return nil, fmt.Errorf("Got err starting watcher: %+v\n", err)
+		return nil, fmt.Errorf("Got err starting watcher: [%v]\n", err)
 	}
 
 	if err := watcher.Watch("."); err != nil {
@@ -113,7 +113,7 @@ func main() {
 
 	for range watcher.EventStream {
 		err, restarted := proc.Restart()
-		if cfg.SSE.Enable && restarted {
+		if cfg.SSE.Enable && restarted && cap(sseServer.MsgChan) > len(sseServer.MsgChan) {
 			sseServer.MsgChan <- sse.Event{Type: "server_message", Data: map[string]bool{"restarted": true}}
 		}
 

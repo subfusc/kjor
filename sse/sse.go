@@ -86,7 +86,7 @@ func NewServer(c *config.Config) *Server {
 
 func (s *Server) Start() {
 	slog.Info("Starting SSE server", "Addr", s.srv.Addr)
-	s.MsgChan = make(chan Event)
+	s.MsgChan = make(chan Event, 1)
 	s.srv.ListenAndServe()
 }
 
