@@ -69,6 +69,11 @@ func NewServer(c *config.Config) *Server {
 	}
 
 	mux.HandleFunc("GET /listen", sseServer.SSETrapper())
+	mux.HandleFunc("POST /started", func(w http.ResponseWriter, r *http.Request) {
+		if cap(sseServer.MsgChan) > len(sseServer.MsgChan) {
+			sseServer.MsgChan <- Event{Type: "server_message", Data: map[string]bool{"restarted": true}}
+		}
+	})
 	mux.HandleFunc("GET /listener.js",
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/javascript")
