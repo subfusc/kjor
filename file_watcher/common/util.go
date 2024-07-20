@@ -1,8 +1,8 @@
-package fanotify_watcher
+package common
 
 import "regexp"
 
-func regexpAny(matchers []*regexp.Regexp, against string) bool {
+func RegexpAny(matchers []*regexp.Regexp, against string) bool {
 	for _, matcher := range matchers {
 		if matcher.MatchString(against) {
 			return true

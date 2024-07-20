@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"runtime"
 
 	"github.com/BurntSushi/toml"
 	"github.com/subfusc/kjor/config"
-	"github.com/subfusc/kjor/fanotify_watcher"
+	"github.com/subfusc/kjor/file_watcher"
+	"github.com/subfusc/kjor/file_watcher/fanotify_watcher"
 	"github.com/subfusc/kjor/sse"
 )
 
@@ -39,7 +39,7 @@ func checkSupport() {
 }
 
 func createFileWatcher(c *config.Config) (*fanotify_watcher.FaNotifyWatcher, error) {
-	watcher, err := fanotify_watcher.NewFaNotifyWatcher()
+	watcher, err := fanotify_watcher.NewFaNotifyWatcher(c)
 	if err != nil {
 		return nil, fmt.Errorf("Got err starting watcher: [%v]\n", err)
 	}
@@ -47,14 +47,6 @@ func createFileWatcher(c *config.Config) (*fanotify_watcher.FaNotifyWatcher, err
 	if err := watcher.Watch("."); err != nil {
 		watcher.Close()
 		return nil, fmt.Errorf("Failed to watch current directory: [%v]", err)
-	}
-
-	for _, ignore := range c.Filewatcher.Ignore {
-		re, err := regexp.Compile(ignore)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to compile re: %s [%v]", ignore, err)
-		}
-		watcher.IgnoreFileNameMatching(re)
 	}
 
 	return watcher, nil
@@ -82,12 +74,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	watcher, err := createFileWatcher(cfg)
+	fw, err := file_watcher.NewFileWatcher(cfg)
+	fw.Watch(os.Getenv("PWD"))
+
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	defer watcher.Close()
+	defer fw.Close()
 
 	proc, err := NewProcess(cfg)
 	if err != nil {
@@ -109,9 +103,9 @@ func main() {
 		go sseServer.Start()
 	}
 
-	go watcher.Start()
+	go fw.Start()
 
-	for range watcher.EventStream {
+	for range fw.EventStream() {
 		err, restarted := proc.Restart()
 		if cfg.SSE.Enable && restarted && cap(sseServer.MsgChan) > len(sseServer.MsgChan) {
 			sseServer.MsgChan <- sse.Event{Type: "server_message", Data: map[string]bool{"restarted": true}}

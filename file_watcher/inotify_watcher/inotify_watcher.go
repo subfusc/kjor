@@ -1,13 +1,19 @@
 package inotify_watcher
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"time"
 	"unsafe"
 
+	"github.com/subfusc/kjor/config"
+	"github.com/subfusc/kjor/file_watcher/common"
 	"golang.org/x/sys/unix"
 )
 
@@ -42,15 +48,17 @@ func (ie *InotifyEvent) MaskToString() []string {
 }
 
 type InotifyWatcher struct {
+	externalEventStream chan common.Event
 	inotifyFD   int
 	eventStream io.ReadCloser
 	pathToWD    map[string]int
 	wdToPath    []string
+	ignoreFiles []*regexp.Regexp
 }
 
 var sizeOfInotifyEvent = uint32(unsafe.Sizeof(InotifyEvent{}))
 
-func NewInotifyWatcher() (*InotifyWatcher, error) {
+func NewInotifyWatcher(c *config.Config) (*InotifyWatcher, error) {
 	fd, err := unix.InotifyInit()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to open an Inotify descriptor: [%v]", err)
@@ -58,11 +66,23 @@ func NewInotifyWatcher() (*InotifyWatcher, error) {
 
 	es := os.NewFile(uintptr(fd), "")
 
+	ignores := make([]*regexp.Regexp, 0)
+	for _, ire := range c.Filewatcher.Ignore {
+		re, err := regexp.Compile(ire)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to compile an IgnoreFile re: [%v]", err)
+		}
+
+		ignores = append(ignores, re)
+	}
+
 	return &InotifyWatcher{
+		externalEventStream: make(chan common.Event, 100),
 		inotifyFD:   fd,
 		eventStream: es,
 		pathToWD:    make(map[string]int),
 		wdToPath:    make([]string, 0),
+		ignoreFiles: ignores,
 	}, nil
 }
 
@@ -106,6 +126,10 @@ func (iw *InotifyWatcher) Close() error {
 	return iw.eventStream.Close()
 }
 
+func (iw *InotifyWatcher) EventStream() chan common.Event {
+	return iw.externalEventStream
+}
+
 func (iw *InotifyWatcher) Start() error {
 	fmt.Println("Starting Inotify Watcher")
 	buf := make([]byte, 4096)
@@ -120,11 +144,32 @@ func (iw *InotifyWatcher) Start() error {
 		ui := uint32(i)
 		for un < ui {
 			event := (*InotifyEvent)(unsafe.Pointer(&buf[un]))
-			name := ""
+			name := bytes.NewBuffer(nil)
 			if event.Len > 0 {
-				name = string(buf[un+sizeOfInotifyEvent : un+sizeOfInotifyEvent+event.Len])
+				for j := un+sizeOfInotifyEvent; buf[j] != 0 && j < un+sizeOfInotifyEvent+event.Len; j++ {
+					name.WriteByte(buf[j])
+				}
 			}
-			fmt.Printf("Inotify: Got event: %+v Mask: %v [%s:%s]\n", event, event.MaskToString(), name, iw.wdToPath[event.Wd - 1])
+
+			fullPath := filepath.Join(iw.wdToPath[event.Wd - 1], name.String())
+			if (event.Mask & unix.IN_CREATE) != 0 {
+				if fi, err := os.Stat(fullPath); err != nil {
+					slog.Warn("Failed to stat file", "path", fullPath, "err", err)
+				} else if fi.IsDir() && []rune(name.String())[0] != '.' && iw.pathToWD[fullPath] == 0 {
+					iw.Watch(fullPath)
+				}
+			}
+
+			if (event.Mask & unix.IN_DELETE_SELF) != 0 {
+				// As long  as wd is allways increasing it is not necessary to delete the corresponding wdToPath
+				// unless something really unexpected is going on
+				delete(iw.pathToWD, fullPath)
+			}
+
+			if !common.RegexpAny(iw.ignoreFiles, name.String()) {
+				iw.externalEventStream <- common.Event{FileName: fullPath, Type: uint64(event.Mask), When: time.Now()}
+			}
+
 			un += sizeOfInotifyEvent + event.Len
 		}
 	}

@@ -7,45 +7,49 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-type ProgConf struct {
+type ProgConfig struct {
 	Name string
 	Args []string
 }
 
-type FaConf struct {
-	Ignore []string
+type FileWatcherConfig struct {
+	Backend string
+	Ignore  []string
 }
 
 type SSEConfig struct {
 	Enable bool
-	Port int
+	Port   int
+	RestartTimeout int
 }
 
 type Config struct {
-	Program ProgConf
-	Build ProgConf
-	Filewatcher FaConf
-	SSE SSEConfig
+	Program     ProgConfig
+	Build       ProgConfig
+	Filewatcher FileWatcherConfig
+	SSE         SSEConfig
 }
 
 var ConfigNotFound = errors.New("Config file not found")
 
 func DefaultConfig() *Config {
 	return &Config{
-		Program: ProgConf{
+		Program: ProgConfig{
 			Name: "./a.out",
 			Args: []string{},
 		},
-		Build: ProgConf{
+		Build: ProgConfig{
 			Name: "go",
 			Args: []string{"build", "-o", "a.out", "./"},
 		},
-		Filewatcher: FaConf{
-			Ignore: []string{"^\\.#", "^#", "~$", "_test\\.go$", "a\\.out$"},
+		Filewatcher: FileWatcherConfig{
+			Backend: "inotify",
+			Ignore:  []string{"^\\.#", "^#", "~$", "_test\\.go$", "a\\.out$"},
 		},
 		SSE: SSEConfig{
 			Enable: true,
-			Port: 8888,
+			Port:   8888,
+			RestartTimeout: 1000,
 		},
 	}
 }

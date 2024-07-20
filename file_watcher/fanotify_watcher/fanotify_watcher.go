@@ -13,6 +13,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/subfusc/kjor/config"
+	"github.com/subfusc/kjor/file_watcher/common"
 	"golang.org/x/sys/unix"
 )
 
@@ -35,7 +37,7 @@ func IsSupported() bool {
 }
 
 type FaNotifyWatcher struct {
-	EventStream chan Event
+	eventStream chan common.Event
 
 	ableToOpenFid    bool
 	eventReader      io.ReadCloser
@@ -46,14 +48,23 @@ type FaNotifyWatcher struct {
 	watchedDir       []string
 }
 
-func NewFaNotifyWatcher() (*FaNotifyWatcher, error) {
+func NewFaNotifyWatcher(c *config.Config) (*FaNotifyWatcher, error) {
 	fw := &FaNotifyWatcher{
-		EventStream:      make(chan Event, 30),
+		eventStream:      make(chan common.Event, 30),
 		eventTypes:       ALL,
 		ableToOpenFid:    CapabilityDacReadSearch(),
 		watchedDir:       make([]string, 0),
 		ignoredFileNames: make([]*regexp.Regexp, 0),
 	}
+
+	for _, r := range c.Filewatcher.Ignore {
+		re, err := regexp.Compile(r)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to compile an ignore file regex: [%v]", err)
+		}
+		fw.ignoredFileNames = append(fw.ignoredFileNames, re)
+	}
+
 	return fw, fw.initialize()
 }
 
@@ -65,13 +76,13 @@ func (fw *FaNotifyWatcher) Watch(dirPath string) error {
 	return nil
 }
 
-func (fw *FaNotifyWatcher) Close() {
-	fw.eventReader.Close()
-	unix.Close(fw.fanFd)
+func (fw *FaNotifyWatcher) EventStream() chan common.Event {
+	return fw.eventStream
 }
 
-func (fw *FaNotifyWatcher) IgnoreFileNameMatching(matcher *regexp.Regexp) {
-	fw.ignoredFileNames = append(fw.ignoredFileNames, matcher)
+func (fw *FaNotifyWatcher) Close() error {
+	fw.eventReader.Close()
+	return unix.Close(fw.fanFd)
 }
 
 func (fw *FaNotifyWatcher) addDirToNotifyGroup(dirPath string) error {
@@ -205,8 +216,8 @@ func (fw *FaNotifyWatcher) Start() error {
 					slog.Debug("Inbound EventInfo", "EvendInfo", ei, "Type", ei.Hdr.InfoTypeToString(), "Handle", ei.HandleAsString())
 				}
 
-				if !regexpAny(fw.ignoredFileNames, fileName) {
-					fw.EventStream <- Event{FileName: fullName, Type: event.Mask, When: time.Now()}
+				if !common.RegexpAny(fw.ignoredFileNames, fileName) {
+					fw.eventStream <- common.Event{FileName: fullName, Type: event.Mask, When: time.Now()}
 				}
 				idx += event.Event_len
 			}
