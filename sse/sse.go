@@ -126,6 +126,7 @@ func NewServer(c *config.Config) *Server {
 			Addr:    fmt.Sprintf(":%d", c.SSE.Port),
 			Handler: mux,
 		},
+		RestartTimeout: c.SSE.RestartTimeout,
 	}
 
 	mux.HandleFunc("GET /listen", sseServer.SSETrapper())
