@@ -61,8 +61,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Printf("Unable to find Working Directory: %s\n", wd)
+		os.Exit(1)
+	}
+
 	fw, err := file_watcher.NewFileWatcher(cfg)
-	fw.Watch(os.Getenv("PWD"))
+	fw.Watch(wd)
 
 	if err != nil {
 		fmt.Println(err)
