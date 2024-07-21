@@ -38,20 +38,6 @@ func checkSupport() {
 	}
 }
 
-func createFileWatcher(c *config.Config) (*fanotify_watcher.FaNotifyWatcher, error) {
-	watcher, err := fanotify_watcher.NewFaNotifyWatcher(c)
-	if err != nil {
-		return nil, fmt.Errorf("Got err starting watcher: [%v]\n", err)
-	}
-
-	if err := watcher.Watch("."); err != nil {
-		watcher.Close()
-		return nil, fmt.Errorf("Failed to watch current directory: [%v]", err)
-	}
-
-	return watcher, nil
-}
-
 func main() {
 	checkSupport()
 	cfg, err := config.ReadConfig()
