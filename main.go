@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/subfusc/kjor/config"
@@ -94,7 +95,7 @@ func main() {
 	for range fw.EventStream() {
 		err, restarted := proc.Restart()
 		if cfg.SSE.Enable && restarted && cap(sseServer.MsgChan) > len(sseServer.MsgChan) {
-			sseServer.MsgChan <- sse.Event{Type: "server_message", Data: map[string]bool{"restarted": true}}
+			sseServer.MsgChan <- sse.Event{Type: "server_message", Source: sse.WATCHER, Data: map[string]any{"restarted": true}, When: time.Now()}
 		}
 
 		if err != nil {

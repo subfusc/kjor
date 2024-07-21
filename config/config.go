@@ -18,8 +18,8 @@ type FileWatcherConfig struct {
 }
 
 type SSEConfig struct {
-	Enable bool
-	Port   int
+	Enable         bool
+	Port           int
 	RestartTimeout int
 }
 
@@ -47,8 +47,8 @@ func DefaultConfig() *Config {
 			Ignore:  []string{"^\\.#", "^#", "~$", "_test\\.go$", "a\\.out$"},
 		},
 		SSE: SSEConfig{
-			Enable: true,
-			Port:   8888,
+			Enable:         true,
+			Port:           8888,
 			RestartTimeout: 1000,
 		},
 	}
