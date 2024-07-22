@@ -48,7 +48,7 @@ server is ready.
 
 ## Config
 
-The default config:
+The default config (Which will by default be in `kjor.toml`):
 
 ```TOML
 [Program]
