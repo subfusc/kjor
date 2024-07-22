@@ -11,7 +11,6 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/subfusc/kjor/config"
 	"github.com/subfusc/kjor/file_watcher"
-	"github.com/subfusc/kjor/file_watcher/fanotify_watcher"
 	"github.com/subfusc/kjor/sse"
 )
 
@@ -24,15 +23,15 @@ var banner = `
 #   #   #     #  #     #  #    #
 #    #   #####   #######  #     #
 
-GOOS:                        %s
-Fanotify Version:            %d
-CAP_DAC_READ_SEARCH capable: %t
-
+GOOS:                %s
+FileWatcher Backend: %s
+SSE:                 %t
+SSE Port:            %d
 `
 
-func checkSupport() {
-	if fanotify_watcher.IsSupported() {
-		fmt.Printf(banner, runtime.GOOS, fanotify_watcher.FanotifyVersion(), fanotify_watcher.CapabilityDacReadSearch())
+func checkSupport(c *config.Config) {
+	if runtime.GOOS == "linux" {
+		fmt.Printf(banner, runtime.GOOS, c.Filewatcher.Backend, c.SSE.Enable, c.SSE.Port)
 	} else {
 		fmt.Println("Sorry, your system is currently not supported")
 		os.Exit(0)
@@ -40,7 +39,6 @@ func checkSupport() {
 }
 
 func main() {
-	checkSupport()
 	cfg, err := config.ReadConfig()
 	switch {
 	case errors.Is(err, config.ConfigNotFound) :
@@ -60,6 +58,8 @@ func main() {
 		fmt.Println("Config is not complete")
 		os.Exit(1)
 	}
+
+	checkSupport(cfg)
 
 	wd, err := os.Getwd()
 	if err != nil {

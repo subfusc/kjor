@@ -131,7 +131,6 @@ func (iw *InotifyWatcher) EventStream() chan common.Event {
 }
 
 func (iw *InotifyWatcher) Start() error {
-	fmt.Println("Starting Inotify Watcher")
 	buf := make([]byte, 4096)
 
 	for {

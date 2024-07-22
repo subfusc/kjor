@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"time"
@@ -56,6 +57,7 @@ func (p *Process) newCmd(e Executable) (*exec.Cmd, context.CancelFunc) {
 	cmd.Cancel = func() error {
 		return cmd.Process.Kill()
 	}
+
 	// What about Stdin?
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -68,7 +70,7 @@ func (p *Process) build() error {
 	t := time.Now()
 	err := cmd.Run()
 	dx := time.Now().Sub(t)
-	fmt.Printf("Build time: %s\n", dx)
+	slog.Info("Build", "time", dx)
 	return err
 }
 

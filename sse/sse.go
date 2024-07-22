@@ -70,11 +70,11 @@ func (s *Server) SSETrapper() http.HandlerFunc {
 
 		lastSent := time.Now()
 
-		delayed := struct{
-			Ctx context.Context
-			Ctl context.CancelFunc
+		delayed := struct {
+			Ctx  context.Context
+			Ctl  context.CancelFunc
 			Done bool
-		} { Done: true }
+		}{Done: true}
 
 		delayedSend := func(c context.Context, message Event) {
 			<-c.Done()
@@ -97,7 +97,7 @@ func (s *Server) SSETrapper() http.HandlerFunc {
 				switch message.Source {
 				case WATCHER:
 					if delayed.Done {
-						delayed.Ctx, delayed.Ctl = context.WithTimeout(context.Background(), time.Duration(s.RestartTimeout) * time.Millisecond)
+						delayed.Ctx, delayed.Ctl = context.WithTimeout(context.Background(), time.Duration(s.RestartTimeout)*time.Millisecond)
 						delayed.Done = false
 						go delayedSend(delayed.Ctx, message)
 					}
