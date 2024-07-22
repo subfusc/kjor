@@ -2,8 +2,9 @@
 
 A live reload tool focused on stability and reliability over speed.
 
-*Note*: For now, this project only supports linux and the fanotify
-protocol.
+*Note*: For now, this project only supports linux. But since most
+development stuff runs in containers that is usually linux, I don't
+see this as a problem per now.
 
 ## Install
 
@@ -59,6 +60,7 @@ The default config:
   Args = ["build", "-o", "a.out", "./"]
 
 [Filewatcher]
+  Backend = "inotify"
   Ignore = ["^\\.#", "^#", "~$", "_test\\.go$", "a\\.out$"]
 
 [SSE]
@@ -67,7 +69,20 @@ The default config:
   RestartTimeout = 1000
 ```
 
-## A note on containers
+## Docker
+
+An example docker file to run this in development:
+
+```Dockerfile
+FROM golang:alpine
+COPY go.mod go.sum /.
+
+RUN go install github.com/subfusc/kjor@latest
+
+CMD ["kjor"]
+```
+
+### A note on containers
 
 This was primarily written to be run inside containers, but seccomp
 have some interesting defaults which seemingly will stop you from
