@@ -67,6 +67,10 @@ The default config (Which will by default be in `kjor.toml`):
   Enable = true
   Port = 8888
   RestartTimeout = 1000
+
+[Logger]
+  Verbose = false
+  Style = "terminal"
 ```
 
 ## Docker

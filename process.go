@@ -1,15 +1,44 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
-	"os"
 	"os/exec"
 	"time"
 
 	"github.com/subfusc/kjor/config"
 )
+
+type AppProcessWriter struct {
+	writer io.Writer
+}
+
+func NewAppProcessWriter(writer io.Writer) *AppProcessWriter {
+	return &AppProcessWriter{writer: writer}
+}
+
+func (apw *AppProcessWriter) Write(out []byte) (int, error) {
+	outs := bytes.Split(out, []byte{10})
+	begin := "\x1b[48;2;0;0;255mApp\x1b[0m\x1b[38;2;0;0;255m🭬\x1b[0m"
+	for _, o := range outs {
+		if len(o) == 0 {
+			continue
+		}
+
+		buf := bytes.NewBufferString(begin)
+		buf.Write(o)
+		buf.WriteByte(10)
+		_, err := apw.writer.Write(buf.Bytes())
+		if err != nil {
+			slog.Error("Failed to write to apw pipe", "err", err)
+			return 0, err
+		}
+	}
+	return len(out), nil
+}
 
 type Executable struct {
 	Program string
@@ -17,25 +46,30 @@ type Executable struct {
 }
 
 type Process struct {
+	appError      io.Writer
+	appOutput     io.Writer
 	cancel        context.CancelFunc
 	cmd           *exec.Cmd
 	lastRestarted time.Time
 	builder       Executable
 	runner        Executable
 	firstBuild    bool
+	processLog    *slog.Logger
 }
 
 func ProgramNotFound(err error) error {
 	return fmt.Errorf("Failed to find program: [%v]", err)
 }
 
-func NewProcess(c *config.Config) (*Process, error) {
+func NewProcess(c *config.Config, logger *slog.Logger, stdOut io.Writer, stdErr io.Writer) (*Process, error) {
 	builder, err := exec.LookPath(c.Build.Name)
 	if err != nil {
 		return nil, ProgramNotFound(err)
 	}
 
 	return &Process{
+		appError:      stdErr,
+		appOutput:     stdOut,
 		cancel:        nil,
 		cmd:           nil,
 		lastRestarted: time.Now(),
@@ -48,6 +82,7 @@ func NewProcess(c *config.Config) (*Process, error) {
 			Args:    c.Build.Args,
 		},
 		firstBuild: true,
+		processLog: logger,
 	}, nil
 }
 
@@ -59,8 +94,8 @@ func (p *Process) newCmd(e Executable) (*exec.Cmd, context.CancelFunc) {
 	}
 
 	// What about Stdin?
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = p.appOutput
+	cmd.Stderr = p.appError
 
 	return cmd, ctl
 }
@@ -70,7 +105,11 @@ func (p *Process) build() error {
 	t := time.Now()
 	err := cmd.Run()
 	dx := time.Now().Sub(t)
-	slog.Info("Build", "time", dx)
+	if err == nil {
+		p.processLog.Info("Build", "time", dx)
+	} else {
+		p.processLog.Warn("Build failed", "err", err)
+	}
 	return err
 }
 
@@ -115,6 +154,7 @@ func (p *Process) Restart() (error, bool) {
 	p.cmd, p.cancel = p.newCmd(p.runner)
 	p.lastRestarted = time.Now()
 
+	p.processLog.Debug("Process restarted successfully")
 	return p.cmd.Start(), true
 }
 

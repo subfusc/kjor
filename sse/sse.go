@@ -48,6 +48,7 @@ func (e Event) ToMessage() string {
 }
 
 type Server struct {
+	logger         *slog.Logger
 	srv            *http.Server
 	MsgChan        chan Event
 	RestartTimeout int
@@ -63,10 +64,10 @@ func sseHeaders(h http.Header) {
 
 func (s *Server) SSETrapper() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("SSE opening socket")
+		s.logger.Info("Opening socket")
 		sseHeaders(w.Header())
 		sse := w.(http.Flusher)
-		defer func() { slog.Info("Closing SSE socket") }()
+		defer func() { s.logger.Info("Closing socket") }()
 
 		lastSent := time.Now()
 
@@ -119,9 +120,10 @@ func (s *Server) SSETrapper() http.HandlerFunc {
 	}
 }
 
-func NewServer(c *config.Config) *Server {
+func NewServer(c *config.Config, logger *slog.Logger) *Server {
 	mux := &http.ServeMux{}
 	sseServer := &Server{
+		logger: logger,
 		srv: &http.Server{
 			Addr:    fmt.Sprintf(":%d", c.SSE.Port),
 			Handler: mux,
@@ -151,7 +153,7 @@ func NewServer(c *config.Config) *Server {
 }
 
 func (s *Server) Start() {
-	slog.Info("Starting SSE server", "Addr", s.srv.Addr)
+	s.logger.Info("Starting server", "Addr", s.srv.Addr)
 	s.MsgChan = make(chan Event, 1)
 	s.srv.ListenAndServe()
 }

@@ -49,16 +49,17 @@ func (ie *InotifyEvent) MaskToString() []string {
 
 type InotifyWatcher struct {
 	externalEventStream chan common.Event
-	inotifyFD   int
-	eventStream io.ReadCloser
-	pathToWD    map[string]int
-	wdToPath    []string
-	ignoreFiles []*regexp.Regexp
+	inotifyFD           int
+	eventStream         io.ReadCloser
+	pathToWD            map[string]int
+	wdToPath            []string
+	ignoreFiles         []*regexp.Regexp
+	logger              *slog.Logger
 }
 
 var sizeOfInotifyEvent = uint32(unsafe.Sizeof(InotifyEvent{}))
 
-func NewInotifyWatcher(c *config.Config) (*InotifyWatcher, error) {
+func NewInotifyWatcher(c *config.Config, logger *slog.Logger) (*InotifyWatcher, error) {
 	fd, err := unix.InotifyInit()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to open an Inotify descriptor: [%v]", err)
@@ -78,11 +79,12 @@ func NewInotifyWatcher(c *config.Config) (*InotifyWatcher, error) {
 
 	return &InotifyWatcher{
 		externalEventStream: make(chan common.Event, 100),
-		inotifyFD:   fd,
-		eventStream: es,
-		pathToWD:    make(map[string]int),
-		wdToPath:    make([]string, 0),
-		ignoreFiles: ignores,
+		inotifyFD:           fd,
+		eventStream:         es,
+		pathToWD:            make(map[string]int),
+		wdToPath:            make([]string, 0),
+		ignoreFiles:         ignores,
+		logger:              logger,
 	}, nil
 }
 
@@ -145,15 +147,15 @@ func (iw *InotifyWatcher) Start() error {
 			event := (*InotifyEvent)(unsafe.Pointer(&buf[un]))
 			name := bytes.NewBuffer(nil)
 			if event.Len > 0 {
-				for j := un+sizeOfInotifyEvent; buf[j] != 0 && j < un+sizeOfInotifyEvent+event.Len; j++ {
+				for j := un + sizeOfInotifyEvent; buf[j] != 0 && j < un+sizeOfInotifyEvent+event.Len; j++ {
 					name.WriteByte(buf[j])
 				}
 			}
 
-			fullPath := filepath.Join(iw.wdToPath[event.Wd - 1], name.String())
+			fullPath := filepath.Join(iw.wdToPath[event.Wd-1], name.String())
 			if (event.Mask & unix.IN_CREATE) != 0 {
 				if fi, err := os.Stat(fullPath); err != nil {
-					slog.Warn("Failed to stat file", "path", fullPath, "err", err)
+					iw.logger.Warn("Failed to stat file", "path", fullPath, "err", err)
 				} else if fi.IsDir() && []rune(name.String())[0] != '.' && iw.pathToWD[fullPath] == 0 {
 					iw.Watch(fullPath)
 				}

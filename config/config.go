@@ -7,9 +7,19 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+type LoggerConfig struct {
+	Verbose bool
+	Style   string
+}
+
 type ProgConfig struct {
 	Name string
 	Args []string
+}
+
+type ProcessConfig struct {
+	Program ProgConfig
+	Build   ProgConfig
 }
 
 type FileWatcherConfig struct {
@@ -24,23 +34,27 @@ type SSEConfig struct {
 }
 
 type Config struct {
+	Process     ProcessConfig
 	Program     ProgConfig
 	Build       ProgConfig
 	Filewatcher FileWatcherConfig
 	SSE         SSEConfig
+	Logger      LoggerConfig
 }
 
 var ConfigNotFound = errors.New("Config file not found")
 
 func DefaultConfig() *Config {
 	return &Config{
-		Program: ProgConfig{
-			Name: "./a.out",
-			Args: []string{},
-		},
-		Build: ProgConfig{
-			Name: "go",
-			Args: []string{"build", "-o", "a.out", "./"},
+		Process: ProcessConfig{
+			Program: ProgConfig{
+				Name: "./a.out",
+				Args: []string{},
+			},
+			Build: ProgConfig{
+				Name: "go",
+				Args: []string{"build", "-o", "a.out", "./"},
+			},
 		},
 		Filewatcher: FileWatcherConfig{
 			Backend: "inotify",
@@ -50,6 +64,10 @@ func DefaultConfig() *Config {
 			Enable:         true,
 			Port:           8888,
 			RestartTimeout: 1000,
+		},
+		Logger: LoggerConfig{
+			Verbose: false,
+			Style: "terminal",
 		},
 	}
 }

@@ -2,8 +2,11 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"log/slog"
+	"math/rand"
 	"os"
 	"runtime"
 	"time"
@@ -22,20 +25,78 @@ var banner = `
 #  #    #     #  #     #  #   #
 #   #   #     #  #     #  #    #
 #    #   #####   #######  #     #
+`
 
+var info = `
 GOOS:                %s
 FileWatcher Backend: %s
 SSE:                 %t
 SSE Port:            %d
 `
 
+func bannerRandomColor() string {
+	buf := bytes.NewBuffer(nil)
+	fgs := make([]Color, 4)
+	for i := range fgs {
+		fgs[i] = Color{byte(rand.Int() % 255), byte(rand.Int() % 255), byte(rand.Int() % 255)}
+	}
+
+	i := 0
+	for _, r := range []rune(banner) {
+		if r == '\n' {
+			i = 0
+		}
+
+		if r == '#' {
+			cb := NewAnsiColorBuilder(string(r))
+			switch i {
+			case 0,1,2,3,4,5,6:
+				cb.Fg(fgs[0])
+			case 9,10,11,12,13,14,15:
+				cb.Fg(fgs[1])
+			case 18,19,20,21,22,23,24:
+				cb.Fg(fgs[2])
+			case 27,28,29,30,31,32,33:
+				cb.Fg(fgs[3])
+			default:
+				cb.Fg(Color{255,255,255})
+			}
+
+			buf.WriteString(cb.String())
+		} else {
+			buf.WriteRune(r)
+		}
+
+		i++
+	}
+
+	return buf.String()
+}
+
 func checkSupport(c *config.Config) {
 	if runtime.GOOS == "linux" {
-		fmt.Printf(banner, runtime.GOOS, c.Filewatcher.Backend, c.SSE.Enable, c.SSE.Port)
+		if c.Logger.Style == "terminal" {
+			fmt.Print(bannerRandomColor())
+		} else {
+			fmt.Print(banner)
+		}
+		fmt.Printf(info, runtime.GOOS, c.Filewatcher.Backend, c.SSE.Enable, c.SSE.Port)
 	} else {
 		fmt.Println("Sorry, your system is currently not supported")
 		os.Exit(0)
 	}
+}
+
+func loggerFromConfig(c *config.Config) *KjorOutput {
+	levels := []slog.Level{slog.LevelInfo, slog.LevelWarn, slog.LevelError}
+	if c.Logger.Verbose {
+		levels = []slog.Level{slog.LevelDebug, slog.LevelDebug, slog.LevelDebug}
+	}
+	if c.Logger.Style == "terminal" {
+		return FancyKjorLogger(levels[0], levels[1], levels[2])
+	}
+
+	return UnfancyKjorLogger(levels[0], levels[1], levels[2])
 }
 
 func main() {
@@ -67,7 +128,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	fw, err := file_watcher.NewFileWatcher(cfg)
+	loggers := loggerFromConfig(cfg)
+
+	fw, err := file_watcher.NewFileWatcher(
+		cfg,
+		slog.New(loggers.FileWatcher),
+	)
 	fw.Watch(wd)
 
 	if err != nil {
@@ -76,7 +142,12 @@ func main() {
 	}
 	defer fw.Close()
 
-	proc, err := NewProcess(cfg)
+	proc, err := NewProcess(
+		cfg,
+		slog.New(loggers.Build),
+		loggers.ProgramStandard,
+		loggers.ProgramError,
+	)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -88,9 +159,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	sseLog := slog.New(loggers.SSE)
 	var sseServer *sse.Server
 	if cfg.SSE.Enable {
-		sseServer = sse.NewServer(cfg)
+		sseServer = sse.NewServer(cfg, sseLog)
 		defer sseServer.Close()
 
 		go sseServer.Start()

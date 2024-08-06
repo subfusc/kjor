@@ -15,14 +15,14 @@ type FileWatcher interface {
 	Watch(path string) error
 }
 
-func NewFileWatcher(c *config.Config) (FileWatcher, error) {
+func NewFileWatcher(c *config.Config, logger *slog.Logger) (FileWatcher, error) {
 	switch c.Filewatcher.Backend {
 	case "fanotify":
-		return fanotify_watcher.NewFaNotifyWatcher(c)
+		return fanotify_watcher.NewFaNotifyWatcher(c, logger)
 	case "inotify":
-		return inotify_watcher.NewInotifyWatcher(c)
+		return inotify_watcher.NewInotifyWatcher(c, logger)
 	default:
 		slog.Info("FileWatch backend not configured, using Inotify as fallback")
-		return inotify_watcher.NewInotifyWatcher(c)
+		return inotify_watcher.NewInotifyWatcher(c, logger)
 	}
 }

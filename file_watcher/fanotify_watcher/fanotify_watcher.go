@@ -46,15 +46,17 @@ type FaNotifyWatcher struct {
 	ignoredFileNames []*regexp.Regexp
 	path             string
 	watchedDir       []string
+	logger           *slog.Logger
 }
 
-func NewFaNotifyWatcher(c *config.Config) (*FaNotifyWatcher, error) {
+func NewFaNotifyWatcher(c *config.Config, logger *slog.Logger) (*FaNotifyWatcher, error) {
 	fw := &FaNotifyWatcher{
 		eventStream:      make(chan common.Event, 30),
 		eventTypes:       ALL,
 		ableToOpenFid:    CapabilityDacReadSearch(),
 		watchedDir:       make([]string, 0),
 		ignoredFileNames: make([]*regexp.Regexp, 0),
+		logger:           logger,
 	}
 
 	for _, r := range c.Filewatcher.Ignore {
@@ -115,7 +117,7 @@ func (fw *FaNotifyWatcher) reInitialize() error {
 
 	for _, dir := range fw.watchedDir {
 		if err := fw.Watch(dir); err != nil {
-			slog.Warn("Failed to watch directory", "dir", dir)
+			fw.logger.Warn("Failed to watch directory", "dir", dir)
 		}
 	}
 
@@ -177,7 +179,7 @@ func (fw *FaNotifyWatcher) Start() error {
 
 			for idx < un {
 				event := (*FanotifyEventMetadata)(unsafe.Pointer(&buf[idx]))
-				slog.Debug("Inbound Fanotify event", "Event", event, "Mask", event.MaskToDebugString())
+				fw.logger.Debug("Inbound Fanotify event", "Event", event, "Mask", event.MaskToDebugString())
 				if (event.Mask&unix.FAN_ONDIR) != 0 && (event.Mask&unix.FAN_CREATE) != 0 {
 					break QueueWatcher
 				}
@@ -213,7 +215,7 @@ func (fw *FaNotifyWatcher) Start() error {
 						fullName = ei.HandleAsString()
 					}
 
-					slog.Debug("Inbound EventInfo", "EvendInfo", ei, "Type", ei.Hdr.InfoTypeToString(), "Handle", ei.HandleAsString())
+					fw.logger.Debug("Inbound EventInfo", "EvendInfo", ei, "Type", ei.Hdr.InfoTypeToString(), "Handle", ei.HandleAsString())
 				}
 
 				if !common.RegexpAny(fw.ignoredFileNames, fileName) {
@@ -222,7 +224,7 @@ func (fw *FaNotifyWatcher) Start() error {
 				idx += event.Event_len
 			}
 		}
-		slog.Warn("ReInitializing FaNotifyWatcher")
+		fw.logger.Warn("ReInitializing FaNotifyWatcher")
 		fw.reInitialize()
 	}
 }
