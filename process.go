@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -45,6 +46,10 @@ type Executable struct {
 	Args    []string
 }
 
+var (
+	ProcessBuildFailed = errors.New("Build failed")
+)
+
 type Process struct {
 	appError      io.Writer
 	appOutput     io.Writer
@@ -53,13 +58,14 @@ type Process struct {
 	lastRestarted time.Time
 	builder       Executable
 	runner        Executable
-	firstBuild    bool
+	buildtOnce    bool
 	processLog    *slog.Logger
 }
 
 func ProgramNotFound(err error) error {
 	return fmt.Errorf("Failed to find program: [%v]", err)
 }
+
 
 func NewProcess(c *config.Config, logger *slog.Logger, stdOut io.Writer, stdErr io.Writer) (*Process, error) {
 	builder, err := exec.LookPath(c.Build.Name)
@@ -81,7 +87,7 @@ func NewProcess(c *config.Config, logger *slog.Logger, stdOut io.Writer, stdErr 
 			Program: builder,
 			Args:    c.Build.Args,
 		},
-		firstBuild: true,
+		buildtOnce: false,
 		processLog: logger,
 	}, nil
 }
@@ -100,6 +106,16 @@ func (p *Process) newCmd(e Executable) (*exec.Cmd, context.CancelFunc) {
 	return cmd, ctl
 }
 
+func (p *Process) firstBuild() error {
+	program, err := exec.LookPath(p.runner.Program)
+	if err != nil {
+		return ProgramNotFound(err)
+	}
+	p.runner.Program = program
+	p.buildtOnce = true
+	return nil
+}
+
 func (p *Process) build() error {
 	cmd, _ := p.newCmd(p.builder)
 	t := time.Now()
@@ -109,29 +125,25 @@ func (p *Process) build() error {
 		p.processLog.Info("Build", "time", dx)
 	} else {
 		p.processLog.Warn("Build failed", "err", err)
+		return ProcessBuildFailed
 	}
-	return err
+	return nil
 }
 
 func (p *Process) Start() error {
 	if err := p.build(); err != nil {
 		return err
 	}
-	if p.firstBuild {
-		program, err := exec.LookPath(p.runner.Program)
-		if err != nil {
-			return ProgramNotFound(err)
-		}
-		p.runner.Program = program
-		p.firstBuild = false
-	}
 
+	p.firstBuild()
 	p.cmd, p.cancel = p.newCmd(p.runner)
 	return p.cmd.Start()
 }
 
 func (p *Process) Stop() {
-	p.cancel()
+	if p.cancel != nil {
+		p.cancel()
+	}
 }
 
 func (p *Process) restartable() bool {
@@ -139,16 +151,32 @@ func (p *Process) restartable() bool {
 }
 
 func (p *Process) Restart() (error, bool) {
-	if p.restartable() {
-		return nil, false
-	}
+	if !p.buildtOnce {
+		if p.cmd != nil || p.cancel != nil {
+			panic("process exists even if buildtOnce is false. This can cause multiple process to spawn")
+		}
 
-	p.build()
+		if err := p.build(); err != nil {
+			return err, false
+		}
 
-	p.cancel()
-	err := p.cmd.Wait()
-	if _, ok := err.(*exec.ExitError); !ok {
-		return err, false
+		if err := p.firstBuild(); err != nil {
+			return err, false
+		}
+	} else {
+		if p.restartable() {
+			return nil, false
+		}
+
+		if err := p.build(); err != nil {
+			return err, false
+		}
+
+		p.cancel()
+		err := p.cmd.Wait()
+		if _, ok := err.(*exec.ExitError); !ok {
+			return err, false
+		}
 	}
 
 	p.cmd, p.cancel = p.newCmd(p.runner)

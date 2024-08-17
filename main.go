@@ -154,10 +154,7 @@ func main() {
 	}
 	defer proc.Stop()
 
-	if err := proc.Start(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	proc.Start()
 
 	sseLog := slog.New(loggers.SSE)
 	var sseServer *sse.Server
@@ -172,8 +169,14 @@ func main() {
 
 	for range fw.EventStream() {
 		err, restarted := proc.Restart()
-		if cfg.SSE.Enable && restarted && cap(sseServer.MsgChan) > len(sseServer.MsgChan) {
-			sseServer.MsgChan <- sse.Event{Type: "server_message", Source: sse.WATCHER, Data: map[string]any{"restarted": true}, When: time.Now()}
+
+		if cfg.SSE.Enable && len(sseServer.MsgChan) < cap(sseServer.MsgChan) {
+			switch {
+			case errors.Is(err, ProcessBuildFailed):
+				sseServer.MsgChan <- sse.Event{Type: "build_message", Source: sse.WATCHER, Data: map[string]any{"message": "Build failed"}, When: time.Now()}
+			case restarted && cap(sseServer.MsgChan) > len(sseServer.MsgChan):
+				sseServer.MsgChan <- sse.Event{Type: "build_action", Source: sse.WATCHER, Data: map[string]any{"restarted": true}, When: time.Now()}
+			}
 		}
 
 		if err != nil {

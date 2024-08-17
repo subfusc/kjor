@@ -24,26 +24,15 @@ type Event struct {
 	Type   string
 	Source uint
 	When   time.Time
-	Data   any
+	Data   map[string]any
 }
 
 func (e Event) ToMessage() string {
-	var data map[string]any
-
-	switch ie := e.Data.(type) {
-	case map[string]any:
-		ie["When"] = e.When
-		data = ie
-	default:
-		data = map[string]any{
-			"When":    e.When,
-			"Message": ie,
-		}
-	}
+	e.Data["When"] = e.When
 
 	buf := bytes.NewBuffer(nil)
 	enc := json.NewEncoder(buf)
-	enc.Encode(data)
+	enc.Encode(e.Data)
 	return fmt.Sprintf("event: %s\ndata: %s\n\n", e.Type, buf.String())
 }
 
@@ -97,10 +86,13 @@ func (s *Server) SSETrapper() http.HandlerFunc {
 			case message := <-s.MsgChan:
 				switch message.Source {
 				case WATCHER:
-					if delayed.Done {
+					if message.Type == "build_action" &&  message.Data["restarted"] != nil && delayed.Done {
 						delayed.Ctx, delayed.Ctl = context.WithTimeout(context.Background(), time.Duration(s.RestartTimeout)*time.Millisecond)
 						delayed.Done = false
 						go delayedSend(delayed.Ctx, message)
+					} else {
+						fmt.Fprintf(w, message.ToMessage())
+						sse.Flush()
 					}
 				case DEV_SERVER:
 					if !delayed.Done {
@@ -134,18 +126,58 @@ func NewServer(c *config.Config, logger *slog.Logger) *Server {
 	mux.HandleFunc("GET /listen", sseServer.SSETrapper())
 	mux.HandleFunc("POST /started", func(w http.ResponseWriter, r *http.Request) {
 		if cap(sseServer.MsgChan) > len(sseServer.MsgChan) {
-			sseServer.MsgChan <- Event{Type: "server_message", Source: DEV_SERVER, When: time.Now(), Data: map[string]any{"restarted": true}}
+			sseServer.MsgChan <- Event{Type: "build_action", Source: DEV_SERVER, When: time.Now(), Data: map[string]any{"restarted": true}}
 		}
 	})
 	mux.HandleFunc("GET /listener.js",
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/javascript")
 			w.Write([]byte(fmt.Sprintf(`
+        function hide(e) {
+          div = document.getElementById("kjor-messages")
+          div.style.display = "none"
+        }
+
+        function addMessageNode() {
+          messageOutput = document.getElementById("kjor-messages")
+          if (messageOutput == null) {
+            body = document.getElementsByTagName("body")[0]
+            div = document.createElement("div")
+            div.id = "kjor-messages"
+            div.style.backgroundColor = "orange"
+            div.style.position = "fixed"
+            div.style.left = "calc(50vw - 200px)"
+            div.style.top = "0px"
+            div.style.padding = "5px"
+            div.style.borderRadius = "5px"
+            div.style.display = "none"
+            div.style.width = "400px"
+            div.style.alignItems = "center"
+            div.style.justifyContent = "space-between"
+            div.style.flexDirection = "row"
+            div.style.cursor = "pointer"
+            div.onclick = hide
+            body.appendChild(div)
+          }
+        }
+
+        addMessageNode()
         const eventSrc = new EventSource("http://localhost:%d/listen")
-        eventSrc.addEventListener("server_message", (event) => {
-          console.log(event.data)
-          eventSrc.close()
-          window.location.reload()
+
+        eventSrc.addEventListener("build_action", (event) => {
+          data = JSON.parse(event.data)
+          if (data["restarted"]) {
+            eventSrc.close()
+            window.location.reload()
+          }
+        })
+        eventSrc.addEventListener("build_message", (event) => {
+          data = JSON.parse(event.data)
+          if (data["message"] != null) {
+            msg = document.getElementById("kjor-messages")
+            msg.innerHTML = "<p>" + data["message"] + "</p><div class=\"kjor-close\">Ⓧ</div>"
+            msg.style.display = "flex"
+          }
         })
       `, c.SSE.Port)))
 		}))
