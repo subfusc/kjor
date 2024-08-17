@@ -86,9 +86,9 @@ func ReadConfig() (*Config, error) {
 		return nil, ConfigNotFound
 	}
 
-	var config Config
-	if _, err := toml.DecodeFile(configFile, &config); err != nil {
+	config := DefaultConfig()
+	if _, err := toml.DecodeFile(configFile, config); err != nil {
 		return nil, err
 	}
-	return &config, nil
+	return config, nil
 }
