@@ -167,6 +167,13 @@ func main() {
 
 	go fw.Start()
 
+	var mainSlog *slog.Logger
+	if cfg.Logger.Style == "terminal" {
+		mainSlog = slog.New(NewTerminalLoggerWithName(os.Stdout, slog.LevelInfo, "Mn ", Color{255,255,255}, Color{200,30,30}))
+	} else {
+		mainSlog = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
+	}
+
 	for range fw.EventStream() {
 		err, restarted := proc.Restart()
 
@@ -179,8 +186,8 @@ func main() {
 			}
 		}
 
-		if err != nil {
-			fmt.Println(err)
+		if err != nil && !errors.Is(err, ProcessBuildFailed) {
+			mainSlog.Error("Got an error thrown into main loop", "err", err)
 		}
 	}
 }
