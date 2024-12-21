@@ -113,7 +113,7 @@ func main() {
 		enc.Encode(cfg)
 		file.Close()
 	case err != nil:
-		fmt.Println("Unable to read config")
+		fmt.Printf("Unable to read config: [%v]", err)
 		os.Exit(1)
 	case !cfg.IsValid():
 		fmt.Println("Config is not complete")

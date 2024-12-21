@@ -17,11 +17,6 @@ type ProgConfig struct {
 	Args []string
 }
 
-type ProcessConfig struct {
-	Program ProgConfig
-	Build   ProgConfig
-}
-
 type FileWatcherConfig struct {
 	Backend string
 	Ignore  []string
@@ -34,7 +29,6 @@ type SSEConfig struct {
 }
 
 type Config struct {
-	Process     ProcessConfig
 	Program     ProgConfig
 	Build       ProgConfig
 	Filewatcher FileWatcherConfig
@@ -46,15 +40,13 @@ var ConfigNotFound = errors.New("Config file not found")
 
 func DefaultConfig() *Config {
 	return &Config{
-		Process: ProcessConfig{
-			Program: ProgConfig{
-				Name: "./a.out",
-				Args: []string{},
-			},
-			Build: ProgConfig{
-				Name: "go",
-				Args: []string{"build", "-o", "a.out", "./"},
-			},
+		Program: ProgConfig{
+			Name: "./a.out",
+			Args: []string{},
+		},
+		Build: ProgConfig{
+			Name: "go",
+			Args: []string{"build", "-o", "a.out", "./"},
 		},
 		Filewatcher: FileWatcherConfig{
 			Backend: "inotify",
