@@ -13,7 +13,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/subfusc/kjor/config"
-	"github.com/subfusc/kjor/file_watcher"
 	"github.com/subfusc/kjor/sse"
 )
 
@@ -29,7 +28,6 @@ var banner = `
 
 var info = `
 GOOS:                %s
-FileWatcher Backend: %s
 SSE:                 %t
 SSE Port:            %d
 `
@@ -80,7 +78,7 @@ func checkSupport(c *config.Config) {
 		} else {
 			fmt.Print(banner)
 		}
-		fmt.Printf(info, runtime.GOOS, c.Filewatcher.Backend, c.SSE.Enable, c.SSE.Port)
+		fmt.Printf(info, runtime.GOOS, c.SSE.Enable, c.SSE.Port)
 	} else {
 		fmt.Println("Sorry, your system is currently not supported")
 		os.Exit(0)
@@ -130,17 +128,13 @@ func main() {
 
 	loggers := loggerFromConfig(cfg)
 
-	fw, err := file_watcher.NewFileWatcher(
-		cfg,
-		slog.New(loggers.FileWatcher),
-	)
-	fw.Watch(wd)
-
+	fw, err := NewFSWatcher(cfg)
 	if err != nil {
-		fmt.Println(err)
+		slog.Error("Failed to start filewatcher", "err", err)
 		os.Exit(1)
 	}
 	defer fw.Close()
+	fw.Watch(wd)
 
 	proc, err := NewProcess(
 		cfg,
