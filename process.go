@@ -120,7 +120,7 @@ func (p *Process) build() error {
 	cmd, _ := p.newCmd(p.builder)
 	t := time.Now()
 	err := cmd.Run()
-	dx := time.Now().Sub(t)
+	dx := time.Since(t)
 	if err == nil {
 		p.processLog.Info("Build", "time", dx)
 	} else {
