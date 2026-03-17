@@ -18,7 +18,6 @@ type ProgConfig struct {
 }
 
 type FileWatcherConfig struct {
-	Backend string
 	Ignore  []string
 }
 
@@ -49,8 +48,7 @@ func DefaultConfig() *Config {
 			Args: []string{"build", "-o", "a.out", "./"},
 		},
 		Filewatcher: FileWatcherConfig{
-			Backend: "inotify",
-			Ignore:  []string{"^\\.#", "^#", "~$", "_test\\.go$", "a\\.out$"},
+			Ignore:  []string{"^\\.#", "^#", "~$", "_test\\.go$", "a\\.out(-go-tmp-unmask)?$"},
 		},
 		SSE: SSEConfig{
 			Enable:         true,
