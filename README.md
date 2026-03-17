@@ -2,10 +2,6 @@
 
 A live reload tool focused on stability and reliability over speed.
 
-*Note*: For now, this project only supports linux. But since most
-development stuff runs in containers that is usually linux, I don't
-see this as a problem per now.
-
 ## Install
 
 `go install github.com/subfusc/kjor@latest`
@@ -60,7 +56,6 @@ The default config (Which will by default be in `kjor.toml`):
   Args = ["build", "-o", "a.out", "./"]
 
 [Filewatcher]
-  Backend = "inotify"
   Ignore = ["^\\.#", "^#", "~$", "_test\\.go$", "a\\.out$"]
 
 [SSE]
@@ -94,4 +89,4 @@ using fanotify in a good way. Atleast for this usecase.
 
 ## Dependencies
 
-- Fanotify v3 or inotify
+see fsnotify for file watcher related dependencies.
