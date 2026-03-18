@@ -51,7 +51,7 @@ func DefaultConfig() *Config {
 			Ignore:  []string{"^\\.#", "^#", "~$", "_test\\.go$", "a\\.out(-go-tmp-unmask)?$"},
 		},
 		SSE: SSEConfig{
-			Enable:         true,
+			Enable:         false,
 			Port:           8888,
 			RestartTimeout: 1000,
 		},
