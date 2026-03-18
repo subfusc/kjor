@@ -71,18 +71,13 @@ func bannerRandomColor() string {
 	return buf.String()
 }
 
-func checkSupport(c *config.Config) {
-	if runtime.GOOS == "linux" {
-		if c.Logger.Style == "terminal" {
-			fmt.Print(bannerRandomColor())
-		} else {
-			fmt.Print(banner)
-		}
-		fmt.Printf(info, runtime.GOOS, c.SSE.Enable, c.SSE.Port)
+func printBanner(c *config.Config) {
+	if c.Logger.Style == "terminal" {
+		fmt.Print(bannerRandomColor())
 	} else {
-		fmt.Println("Sorry, your system is currently not supported")
-		os.Exit(0)
+		fmt.Print(banner)
 	}
+	fmt.Printf(info, runtime.GOOS, c.SSE.Enable, c.SSE.Port)
 }
 
 func loggerFromConfig(c *config.Config) *KjorOutput {
@@ -118,7 +113,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	checkSupport(cfg)
+	printBanner(cfg)
 
 	wd, err := os.Getwd()
 	if err != nil {
