@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -30,6 +31,7 @@ var info = `
 GOOS:                %s
 SSE:                 %t
 SSE Port:            %d
+Working Directory:   %s
 `
 
 func bannerRandomColor() string {
@@ -48,16 +50,16 @@ func bannerRandomColor() string {
 		if r == '#' {
 			cb := NewAnsiColorBuilder(string(r))
 			switch i {
-			case 0,1,2,3,4,5,6:
+			case 0, 1, 2, 3, 4, 5, 6:
 				cb.Fg(fgs[0])
-			case 9,10,11,12,13,14,15:
+			case 9, 10, 11, 12, 13, 14, 15:
 				cb.Fg(fgs[1])
-			case 18,19,20,21,22,23,24:
+			case 18, 19, 20, 21, 22, 23, 24:
 				cb.Fg(fgs[2])
-			case 27,28,29,30,31,32,33:
+			case 27, 28, 29, 30, 31, 32, 33:
 				cb.Fg(fgs[3])
 			default:
-				cb.Fg(Color{255,255,255})
+				cb.Fg(Color{255, 255, 255})
 			}
 
 			buf.WriteString(cb.String())
@@ -71,13 +73,13 @@ func bannerRandomColor() string {
 	return buf.String()
 }
 
-func printBanner(c *config.Config) {
+func printBanner(c *config.Config, wd string) {
 	if c.Logger.Style == "terminal" {
 		fmt.Print(bannerRandomColor())
 	} else {
 		fmt.Print(banner)
 	}
-	fmt.Printf(info, runtime.GOOS, c.SSE.Enable, c.SSE.Port)
+	fmt.Printf(info, runtime.GOOS, c.SSE.Enable, c.SSE.Port, wd)
 }
 
 func loggerFromConfig(c *config.Config) *KjorOutput {
@@ -93,9 +95,12 @@ func loggerFromConfig(c *config.Config) *KjorOutput {
 }
 
 func main() {
+	mainCtx, mainCcl := context.WithCancel(context.Background())
+	defer mainCcl()
+
 	cfg, err := config.ReadConfig()
 	switch {
-	case errors.Is(err, config.ConfigNotFound) :
+	case errors.Is(err, config.ConfigNotFound):
 		cfg = config.DefaultConfig()
 		file, err := os.Create("kjor.toml")
 		if err != nil {
@@ -113,37 +118,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	printBanner(cfg)
-
 	wd, err := os.Getwd()
 	if err != nil {
 		fmt.Printf("Unable to find Working Directory: %s\n", wd)
 		os.Exit(1)
 	}
 
+	printBanner(cfg, wd)
+
 	loggers := loggerFromConfig(cfg)
 
 	fw, err := NewFSWatcher(cfg)
 	if err != nil {
-		slog.Error("Failed to start filewatcher", "err", err)
+		slog.Error("Failed to create filewatcher", "err", err)
 		os.Exit(1)
 	}
 	defer fw.Close()
-	fw.Watch(wd)
+	if err := fw.Watch(wd); err != nil {
+		slog.Error("Failed to watch current pwd", "err", err)
+	}
 
-	proc, err := NewProcess(
-		cfg,
-		slog.New(loggers.Build),
-		loggers.ProgramStandard,
-		loggers.ProgramError,
-	)
+	fw.Start(mainCtx)
+
+	proc, err := NewProcess(cfg, slog.New(loggers.Build), loggers.ProgramStandard, loggers.ProgramError)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	defer proc.Stop()
 
-	proc.Start()
+	proc.Start(mainCtx)
 
 	sseLog := slog.New(loggers.SSE)
 	var sseServer *sse.Server
@@ -154,17 +157,22 @@ func main() {
 		go sseServer.Start()
 	}
 
-	go fw.Start()
-
 	var mainSlog *slog.Logger
 	if cfg.Logger.Style == "terminal" {
-		mainSlog = slog.New(NewTerminalLoggerWithName(os.Stdout, slog.LevelInfo, "Mn ", Color{255,255,255}, Color{200,30,30}))
+		mainSlog = slog.New(NewTerminalLoggerWithName(os.Stdout, slog.LevelInfo, "Mn ", Color{255, 255, 255}, Color{200, 30, 30}))
 	} else {
 		mainSlog = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 	}
 
+	mainSlog.Info("Starting")
 	for range fw.EventStream() {
-		err, restarted := proc.Restart()
+		restarted := false
+
+		select {
+		case proc.restart <- struct{}{}:
+			restarted = true
+		default:
+		}
 
 		if cfg.SSE.Enable && len(sseServer.MsgChan) < cap(sseServer.MsgChan) {
 			switch {
@@ -174,9 +182,6 @@ func main() {
 				sseServer.MsgChan <- sse.Event{Type: "build_action", Source: sse.WATCHER, Data: map[string]any{"restarted": true}, When: time.Now()}
 			}
 		}
-
-		if err != nil && !errors.Is(err, ProcessBuildFailed) {
-			mainSlog.Error("Got an error thrown into main loop", "err", err)
-		}
 	}
+	mainSlog.Info("Exited")
 }

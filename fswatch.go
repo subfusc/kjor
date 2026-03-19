@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"regexp"
@@ -18,7 +19,7 @@ type Event struct {
 
 type FSWatcher struct {
 	*fsnotify.Watcher
-	events chan Event
+	events         chan Event
 	ignorePatterns []*regexp.Regexp
 }
 
@@ -35,8 +36,8 @@ func NewFSWatcher(c *config.Config) (*FSWatcher, error) {
 	}
 
 	return &FSWatcher{
-		Watcher: watcher,
-		events: make(chan Event),
+		Watcher:        watcher,
+		events:         make(chan Event),
 		ignorePatterns: ignorePatterns,
 	}, err
 }
@@ -59,16 +60,28 @@ func (fsw *FSWatcher) Ignored(pattern string) bool {
 	return false
 }
 
-func (fsw *FSWatcher) Start() {
-	for event := range fsw.Watcher.Events {
-		if !event.Op.Has(fsnotify.Chmod) && !fsw.Ignored(path.Base(event.Name)) {
-			fsw.events <- Event{
-				FileName: event.Name,
-				Type: uint64(event.Op),
-				When: time.Now(),
+func (fsw *FSWatcher) Start(ctx context.Context) {
+	go func() {
+		for {
+			select {
+			case event, ok := <-fsw.Watcher.Events:
+				if !ok {
+					close(fsw.events)
+					return
+				}
+
+				if !event.Op.Has(fsnotify.Chmod) && !fsw.Ignored(path.Base(event.Name)) {
+					fsw.events <- Event{
+						FileName: event.Name,
+						Type:     uint64(event.Op),
+						When:     time.Now(),
+					}
+				}
+			case <-ctx.Done():
+				return
 			}
 		}
-	}
+	}()
 }
 
 func (fsw *FSWatcher) Watch(path string) error {

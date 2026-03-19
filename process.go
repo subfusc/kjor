@@ -42,8 +42,31 @@ func (apw *AppProcessWriter) Write(out []byte) (int, error) {
 }
 
 type Executable struct {
-	Program string
-	Args    []string
+	program string
+	args    []string
+	found   bool
+}
+
+func (e Executable) Exists(cached bool) bool {
+	if e.found && cached {
+		return true
+	}
+
+	str, err := exec.LookPath(e.program)
+	if err != nil {
+		return false
+	}
+
+	e.program = str
+	return true
+}
+
+func (e Executable) Program() string {
+	return e.program
+}
+
+func (e Executable) Args() []string {
+	return e.args
 }
 
 var (
@@ -60,41 +83,43 @@ type Process struct {
 	runner        Executable
 	buildtOnce    bool
 	processLog    *slog.Logger
+	restart       chan struct{}
 }
 
 func ProgramNotFound(err error) error {
 	return fmt.Errorf("Failed to find program: [%v]", err)
 }
 
-
 func NewProcess(c *config.Config, logger *slog.Logger, stdOut io.Writer, stdErr io.Writer) (*Process, error) {
-	builder, err := exec.LookPath(c.Build.Name)
-	if err != nil {
-		return nil, ProgramNotFound(err)
-	}
-
-	return &Process{
+	p := &Process{
 		appError:      stdErr,
 		appOutput:     stdOut,
 		cancel:        nil,
 		cmd:           nil,
 		lastRestarted: time.Now(),
 		runner: Executable{
-			Program: c.Program.Name,
-			Args:    c.Program.Args,
+			program: c.Program.Name,
+			args:    c.Program.Args,
 		},
 		builder: Executable{
-			Program: builder,
-			Args:    c.Build.Args,
+			program: c.Build.Name,
+			args:    c.Build.Args,
 		},
 		buildtOnce: false,
 		processLog: logger,
-	}, nil
+		restart:    make(chan struct{}),
+	}
+
+	if found := p.builder.Exists(false); !found {
+		return nil, fmt.Errorf("Faild to find builder program: [%w]", ProcessBuildFailed)
+	}
+
+	return p, nil
 }
 
 func (p *Process) newCmd(e Executable) (*exec.Cmd, context.CancelFunc) {
 	ctx, ctl := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, e.Program, e.Args...)
+	cmd := exec.CommandContext(ctx, e.Program(), e.Args()...)
 	cmd.Cancel = func() error {
 		return cmd.Process.Kill()
 	}
@@ -106,90 +131,81 @@ func (p *Process) newCmd(e Executable) (*exec.Cmd, context.CancelFunc) {
 	return cmd, ctl
 }
 
-func (p *Process) firstBuild() error {
-	program, err := exec.LookPath(p.runner.Program)
-	if err != nil {
-		return ProgramNotFound(err)
-	}
-	p.runner.Program = program
-	p.buildtOnce = true
-	return nil
-}
-
 func (p *Process) build() error {
 	cmd, _ := p.newCmd(p.builder)
 	t := time.Now()
 	err := cmd.Run()
 	dx := time.Since(t)
-	if err == nil {
-		p.processLog.Info("Build", "time", dx)
-	} else {
-		p.processLog.Warn("Build failed", "err", err)
+
+	if err != nil {
+		p.processLog.Warn("Build failed", "err", err, "time", dx)
 		return ProcessBuildFailed
 	}
+
+	p.processLog.Info("Build", "time", dx)
 	return nil
 }
 
-func (p *Process) Start() error {
-	if err := p.build(); err != nil {
-		return err
-	}
-
-	p.firstBuild()
-	p.cmd, p.cancel = p.newCmd(p.runner)
-	return p.cmd.Start()
-}
-
-func (p *Process) Stop() {
-	if p.cancel != nil {
-		p.cancel()
-	}
-}
-
-func (p *Process) restartable() bool {
-	return p.lastRestarted.Add(1 * time.Second).After(time.Now())
-}
-
-func (p *Process) Restart() (error, bool) {
-	if !p.buildtOnce {
-		if p.cmd != nil || p.cancel != nil {
-			panic("process exists even if buildtOnce is false. This can cause multiple process to spawn")
-		}
-
+func (p *Process) Start(programCtx context.Context) {
+	go func() {
 		if err := p.build(); err != nil {
-			return err, false
+			p.processLog.Error("First build failed", "err", err)
 		}
 
-		if err := p.firstBuild(); err != nil {
-			return err, false
+		var cmd *exec.Cmd
+		var ccl context.CancelFunc
+
+		for {
+			if p.runner.Exists(false) {
+				cmd, ccl = p.newCmd(p.runner)
+				err := cmd.Start()
+
+				if err != nil {
+					p.processLog.Error("Failed to start program", "err", err)
+				}
+			}
+
+			sleeper := make(chan struct{})
+			go func() {
+				time.Sleep(1 * time.Second)
+				sleeper <- struct{}{}
+			}()
+
+			select {
+			case <-sleeper:
+			case <-programCtx.Done():
+				if ccl != nil {
+					ccl()
+				}
+				return
+			}
+
+			select {
+			case <-p.restart:
+			case <-programCtx.Done():
+				if ccl != nil {
+					ccl()
+				}
+				return
+			}
+
+			err := p.build()
+			if err != nil {
+				p.processLog.Error("Failed to build program", "err", err)
+				continue
+			}
+
+			if ccl != nil {
+				ccl()
+			}
+
+			if cmd != nil {
+				// TODO: Should return an exit state error.
+				// are there other kinds of errors needed to be catched here?
+				cmd.Wait()
+			}
+
+			cmd, ccl = p.newCmd(p.runner)
 		}
-	} else {
-		if p.restartable() {
-			return nil, false
-		}
-
-		if err := p.build(); err != nil {
-			return err, false
-		}
-
-		p.cancel()
-		err := p.cmd.Wait()
-		if _, ok := err.(*exec.ExitError); !ok {
-			return err, false
-		}
-	}
-
-	p.cmd, p.cancel = p.newCmd(p.runner)
-	p.lastRestarted = time.Now()
-
-	p.processLog.Debug("Process restarted successfully")
-	return p.cmd.Start(), true
-}
-
-func (p *Process) RestartWithArgs(args ...string) (error, bool) {
-	if p.restartable() {
-		return nil, false
-	}
-	p.runner.Args = args
-	return p.Restart()
+	}()
 }
