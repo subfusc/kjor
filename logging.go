@@ -20,21 +20,21 @@ type KjorOutput struct {
 
 func FancyKjorLogger(buildLevel slog.Level, SSELevel slog.Level, fileWatcherLevel slog.Level) *KjorOutput {
 	return &KjorOutput{
-		Build: NewTerminalLoggerWithName(os.Stdout, buildLevel, "Prc", Color{0,0,0}, Color{0,255,0}),
+		Build:           NewTerminalLoggerWithName(os.Stdout, buildLevel, "Prc", Color{0, 0, 0}, Color{0, 255, 0}),
 		ProgramStandard: NewAppProcessWriter(os.Stdout),
-		ProgramError: NewAppProcessWriter(os.Stdout),
-		SSE: NewTerminalLoggerWithName(os.Stdout, SSELevel, "SSE", Color{0,0,0}, Color{255,0,0}),
-		FileWatcher: NewTerminalLoggerWithName(os.Stdout, fileWatcherLevel, "FWt", Color{0,0,0}, Color{0,0,255}),
+		ProgramError:    NewAppProcessWriter(os.Stdout),
+		SSE:             NewTerminalLoggerWithName(os.Stdout, SSELevel, "SSE", Color{0, 0, 0}, Color{255, 0, 0}),
+		FileWatcher:     NewTerminalLoggerWithName(os.Stdout, fileWatcherLevel, "FWt", Color{0, 0, 0}, Color{0, 0, 255}),
 	}
 }
 
 func UnfancyKjorLogger(buildLevel slog.Level, SSELevel slog.Level, fileWatcherLevel slog.Level) *KjorOutput {
 	return &KjorOutput{
-		Build: slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{AddSource: false, Level: buildLevel}),
+		Build:           slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{AddSource: false, Level: buildLevel}),
 		ProgramStandard: os.Stdout,
-		ProgramError: os.Stderr,
-		SSE: slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{AddSource: false, Level: SSELevel}),
-		FileWatcher: slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{AddSource: false, Level: fileWatcherLevel}),
+		ProgramError:    os.Stderr,
+		SSE:             slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{AddSource: false, Level: SSELevel}),
+		FileWatcher:     slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{AddSource: false, Level: fileWatcherLevel}),
 	}
 }
 
@@ -66,19 +66,19 @@ func (tl *TerminalLogger) lvlFormat(lvl slog.Level) (string, string) {
 	switch lvl {
 	case slog.LevelDebug:
 		cb.Colorize(Color{0, 0, 0}, Color{255, 255, 255})
-		arrow.Fg(Color{255,255,255})
+		arrow.Fg(Color{255, 255, 255})
 	case slog.LevelInfo:
 		cb.Colorize(Color{255, 255, 255}, Color{0, 0, 255})
-		arrow.Fg(Color{0,0,255})
+		arrow.Fg(Color{0, 0, 255})
 	case slog.LevelWarn:
 		cb.Colorize(Color{0, 0, 0}, Color{255, 255, 0})
-		arrow.Fg(Color{255,255,0})
+		arrow.Fg(Color{255, 255, 0})
 	case slog.LevelError:
 		cb.Colorize(Color{255, 255, 255}, Color{255, 0, 0})
-		arrow.Fg(Color{255,0,0})
+		arrow.Fg(Color{255, 0, 0})
 	default:
 		cb.Colorize(Color{255, 255, 255}, Color{102, 51, 0})
-		arrow.Fg(Color{102,51,0})
+		arrow.Fg(Color{102, 51, 0})
 	}
 	return cb.String(), arrow.String()
 }
@@ -89,7 +89,7 @@ func (tl *TerminalLogger) Enabled(ctx context.Context, level slog.Level) bool {
 
 func (tl *TerminalLogger) Handle(ctx context.Context, r slog.Record) error {
 	buf := bytes.NewBuffer(nil)
-	ti := " " + r.Time.Format(time.DateTime + ".000") + " "
+	ti := " " + r.Time.Format(time.DateTime+".000") + " "
 	lvl, arr := tl.lvlFormat(r.Level)
 	_, err := fmt.Fprintf(buf, "%s%s%s%s %s [", tl.streamName, ti, lvl, arr, r.Message)
 	if err != nil {
