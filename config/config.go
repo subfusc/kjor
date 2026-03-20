@@ -63,7 +63,7 @@ func DefaultConfig() *Config {
 		},
 		Logger: LoggerConfig{
 			Verbose: false,
-			Style: "terminal",
+			Style:   "terminal",
 		},
 	}
 }
