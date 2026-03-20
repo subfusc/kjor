@@ -56,7 +56,7 @@ The default config (Which will by default be in `kjor.toml`):
   Args = ["build", "-o", "a.out", "./"]
 
 [Filewatcher]
-  Ignore = ["^\\.#", "^#", "~$", "_test\\.go$", "a\\.out$"]
+  IgnoreFile = ["^\\.#", "^#", "~$", "_test\\.go$", "a\\.out$"]
 
 [SSE]
   Enable = true
