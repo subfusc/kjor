@@ -19,26 +19,37 @@ type Event struct {
 
 type FSWatcher struct {
 	*fsnotify.Watcher
-	events         chan Event
-	ignorePatterns []*regexp.Regexp
+	events                 chan Event
+	ignorePatternsFile     []*regexp.Regexp
+	ignorePatternsFullPath []*regexp.Regexp
 }
 
 func NewFSWatcher(c *config.Config) (*FSWatcher, error) {
 	watcher, err := fsnotify.NewWatcher()
 
-	ignorePatterns := make([]*regexp.Regexp, 0, len(c.Filewatcher.Ignore))
-	for i, ire := range c.Filewatcher.Ignore {
+	ignorePatternsFile := make([]*regexp.Regexp, 0, len(c.Filewatcher.IgnoreFile))
+	for i, ire := range c.Filewatcher.IgnoreFile {
 		re, err := regexp.Compile(ire)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to compile an IgnoreFile regexp, Ignore[%d]: [%w]", i, err)
 		}
-		ignorePatterns = append(ignorePatterns, re)
+		ignorePatternsFile = append(ignorePatternsFile, re)
+	}
+
+	ignorePatternsFullPath := make([]*regexp.Regexp, 0, len(c.Filewatcher.IgnoreFullPath))
+	for i, ire := range c.Filewatcher.IgnoreFullPath {
+		re, err := regexp.Compile(ire)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to compile an IgnoreFullPath regexp, Ignore[%d]: [%w]", i, err)
+		}
+		ignorePatternsFullPath = append(ignorePatternsFullPath, re)
 	}
 
 	return &FSWatcher{
 		Watcher:        watcher,
 		events:         make(chan Event),
-		ignorePatterns: ignorePatterns,
+		ignorePatternsFile: ignorePatternsFile,
+		ignorePatternsFullPath: ignorePatternsFullPath,
 	}, err
 }
 
@@ -46,9 +57,15 @@ func (fsw *FSWatcher) EventStream() chan Event {
 	return fsw.events
 }
 
-func (fsw *FSWatcher) Ignored(pattern string) bool {
-	for _, re := range fsw.ignorePatterns {
-		if re.MatchString(pattern) {
+func (fsw *FSWatcher) Ignored(file, fullpath string) bool {
+	for _, re := range fsw.ignorePatternsFile {
+		if re.MatchString(file) {
+			return true
+		}
+	}
+
+	for _, re := range fsw.ignorePatternsFullPath {
+		if re.MatchString(fullpath) {
 			return true
 		}
 	}
@@ -66,7 +83,7 @@ func (fsw *FSWatcher) Start(ctx context.Context) {
 					return
 				}
 
-				if !event.Op.Has(fsnotify.Chmod) && !fsw.Ignored(path.Base(event.Name)) {
+				if !event.Op.Has(fsnotify.Chmod) && !fsw.Ignored(path.Base(event.Name), event.Name) {
 					fsw.events <- Event{
 						FileName: event.Name,
 						Type:     uint64(event.Op),

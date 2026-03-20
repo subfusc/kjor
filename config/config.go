@@ -18,7 +18,8 @@ type ProgConfig struct {
 }
 
 type FileWatcherConfig struct {
-	Ignore  []string
+	IgnoreFile     []string
+	IgnoreFullPath []string
 }
 
 type SSEConfig struct {
@@ -48,7 +49,8 @@ func DefaultConfig() *Config {
 			Args: []string{"build", "-o", "a.out", "./"},
 		},
 		Filewatcher: FileWatcherConfig{
-			Ignore:  []string{"^\\.#", "^#", "~$", "_test\\.go$", "a\\.out(-go-tmp-unmask)?$"},
+			IgnoreFile:     []string{"^\\.#", "^#", "~$", "_test\\.go$", "a\\.out(-go-tmp-unmask)?$"},
+			IgnoreFullPath: []string{"/tmp*"},
 		},
 		SSE: SSEConfig{
 			Enable:         false,
