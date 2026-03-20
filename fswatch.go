@@ -42,10 +42,6 @@ func NewFSWatcher(c *config.Config) (*FSWatcher, error) {
 	}, err
 }
 
-func (fsw *FSWatcher) Close() error {
-	return fsw.Watcher.Close()
-}
-
 func (fsw *FSWatcher) EventStream() chan Event {
 	return fsw.events
 }
@@ -78,6 +74,7 @@ func (fsw *FSWatcher) Start(ctx context.Context) {
 					}
 				}
 			case <-ctx.Done():
+				fsw.Watcher.Close()
 				return
 			}
 		}

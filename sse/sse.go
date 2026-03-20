@@ -132,7 +132,7 @@ func NewServer(c *config.Config, logger *slog.Logger) *Server {
 	mux.HandleFunc("GET /listener.js",
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/javascript")
-			w.Write([]byte(fmt.Sprintf(`
+			fmt.Fprintf(w, `
         function hide(e) {
           div = document.getElementById("kjor-messages")
           div.style.display = "none"
@@ -179,18 +179,18 @@ func NewServer(c *config.Config, logger *slog.Logger) *Server {
             msg.style.display = "flex"
           }
         })
-      `, c.SSE.Port)))
+      `, c.SSE.Port)
 		}))
 	return sseServer
 }
 
-func (s *Server) Start() {
+func (s *Server) Start(cfg context.Context) {
 	s.logger.Info("Starting server", "Addr", s.srv.Addr)
 	s.MsgChan = make(chan Event, 1)
-	s.srv.ListenAndServe()
-}
-
-func (s *Server) Close() {
-	close(s.MsgChan)
-	s.srv.Close()
+	go func() {
+		s.srv.ListenAndServe()
+		<-cfg.Done()
+		close(s.MsgChan)
+		s.srv.Close()
+	}()
 }

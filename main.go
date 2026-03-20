@@ -73,6 +73,11 @@ func bannerRandomColor() string {
 	return buf.String()
 }
 
+func printAndExitWithFailState(msg string, err error) {
+	slog.Error(msg, "err", err)
+	os.Exit(1)
+}
+
 func printBanner(c *config.Config, wd string) {
 	if c.Logger.Style == "terminal" {
 		fmt.Print(bannerRandomColor())
@@ -94,77 +99,44 @@ func loggerFromConfig(c *config.Config) *KjorOutput {
 	return UnfancyKjorLogger(levels[0], levels[1], levels[2])
 }
 
-func main() {
-	mainCtx, mainCcl := context.WithCancel(context.Background())
-	defer mainCcl()
-
+func mustReadConfig() *config.Config {
 	cfg, err := config.ReadConfig()
 	switch {
 	case errors.Is(err, config.ConfigNotFound):
 		cfg = config.DefaultConfig()
 		file, err := os.Create("kjor.toml")
 		if err != nil {
-			fmt.Println("Failed to create standard config")
-			os.Exit(1)
+			printAndExitWithFailState("Failed to create standard config", err)
 		}
 		enc := toml.NewEncoder(file)
 		enc.Encode(cfg)
 		file.Close()
 	case err != nil:
-		fmt.Printf("Unable to read config: [%v]", err)
-		os.Exit(1)
+		printAndExitWithFailState("Unable to read config", err)
 	case !cfg.IsValid():
-		fmt.Println("Config is not complete")
-		os.Exit(1)
+		printAndExitWithFailState("Config is not complete", nil)
 	}
 
-	wd, err := os.Getwd()
-	if err != nil {
-		fmt.Printf("Unable to find Working Directory: %s\n", wd)
-		os.Exit(1)
-	}
+	return cfg
+}
 
-	printBanner(cfg, wd)
-
-	loggers := loggerFromConfig(cfg)
-
+func mustSetupFSWatch(ctx context.Context, cfg *config.Config, wd string) *FSWatcher {
 	fw, err := NewFSWatcher(cfg)
 	if err != nil {
 		slog.Error("Failed to create filewatcher", "err", err)
 		os.Exit(1)
 	}
-	defer fw.Close()
+
 	if err := fw.Watch(wd); err != nil {
 		slog.Error("Failed to watch current pwd", "err", err)
 	}
 
-	fw.Start(mainCtx)
+	fw.Start(ctx)
 
-	proc, err := NewProcess(cfg, slog.New(loggers.Build), loggers.ProgramStandard, loggers.ProgramError)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	return fw
+}
 
-	proc.Start(mainCtx)
-
-	sseLog := slog.New(loggers.SSE)
-	var sseServer *sse.Server
-	if cfg.SSE.Enable {
-		sseServer = sse.NewServer(cfg, sseLog)
-		defer sseServer.Close()
-
-		go sseServer.Start()
-	}
-
-	var mainSlog *slog.Logger
-	if cfg.Logger.Style == "terminal" {
-		mainSlog = slog.New(NewTerminalLoggerWithName(os.Stdout, slog.LevelInfo, "Mn ", Color{255, 255, 255}, Color{200, 30, 30}))
-	} else {
-		mainSlog = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-	}
-
-	mainSlog.Info("Starting")
+func start(cfg *config.Config, fw *FSWatcher, proc *Process, sseServer *sse.Server) {
 	for range fw.EventStream() {
 		restarted := false
 
@@ -175,13 +147,48 @@ func main() {
 		}
 
 		if cfg.SSE.Enable && len(sseServer.MsgChan) < cap(sseServer.MsgChan) {
-			switch {
-			case errors.Is(err, ProcessBuildFailed):
-				sseServer.MsgChan <- sse.Event{Type: "build_message", Source: sse.WATCHER, Data: map[string]any{"message": "Build failed"}, When: time.Now()}
-			case restarted && cap(sseServer.MsgChan) > len(sseServer.MsgChan):
-				sseServer.MsgChan <- sse.Event{Type: "build_action", Source: sse.WATCHER, Data: map[string]any{"restarted": true}, When: time.Now()}
+			if restarted && cap(sseServer.MsgChan) > len(sseServer.MsgChan){
+				sseServer.MsgChan <- sse.Event{
+					Type: "build_action",
+					Source: sse.WATCHER,
+					Data: map[string]any{"restarted": true},
+					When: time.Now(),
+				}
 			}
 		}
 	}
-	mainSlog.Info("Exited")
+}
+
+func main() {
+	mainCtx, mainCcl := context.WithCancel(context.Background())
+	defer mainCcl()
+
+	cfg := mustReadConfig()
+	loggers := loggerFromConfig(cfg)
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Printf("Unable to find Working Directory: %s\n", wd)
+		os.Exit(1)
+	}
+
+	printBanner(cfg, wd)
+
+	fw := mustSetupFSWatch(mainCtx, cfg, wd)
+
+	proc, err := NewProcess(cfg, slog.New(loggers.Build), loggers.ProgramStandard, loggers.ProgramError)
+	if err != nil {
+		slog.Error("Failed to create process", "err", err)
+		os.Exit(1)
+	}
+
+	proc.Start(mainCtx)
+
+	sseLog := slog.New(loggers.SSE)
+	var sseServer *sse.Server
+	if cfg.SSE.Enable {
+		sseServer = sse.NewServer(cfg, sseLog)
+		sseServer.Start(mainCtx)
+	}
+
+	start(cfg, fw, proc, sseServer)
 }
