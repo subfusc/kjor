@@ -13,8 +13,10 @@ type LoggerConfig struct {
 }
 
 type ProgConfig struct {
-	Name string
-	Args []string
+	Name           string
+	Args           []string
+	RestartTimeout int
+	BuildDelay     int
 }
 
 type FileWatcherConfig struct {
@@ -41,8 +43,10 @@ var ConfigNotFound = errors.New("Config file not found")
 func DefaultConfig() *Config {
 	return &Config{
 		Program: ProgConfig{
-			Name: "./a.out",
-			Args: []string{},
+			Name:           "./a.out",
+			Args:           []string{},
+			RestartTimeout: 500,
+			BuildDelay:     100,
 		},
 		Build: ProgConfig{
 			Name: "go",

@@ -83,6 +83,8 @@ type Process struct {
 	runner        Executable
 	buildtOnce    bool
 	processLog    *slog.Logger
+	timeout       time.Duration
+	buildDelay time.Duration
 	restart       chan struct{}
 }
 
@@ -107,6 +109,8 @@ func NewProcess(c *config.Config, logger *slog.Logger, stdOut io.Writer, stdErr 
 		},
 		buildtOnce: false,
 		processLog: logger,
+		timeout:    time.Duration(c.Program.RestartTimeout) * time.Millisecond,
+		buildDelay: time.Duration(c.Program.BuildDelay) * time.Millisecond,
 		restart:    make(chan struct{}),
 	}
 
@@ -167,7 +171,7 @@ func (p *Process) Start(programCtx context.Context) {
 
 			sleeper := make(chan struct{})
 			go func() {
-				time.Sleep(1 * time.Second)
+				time.Sleep(p.timeout)
 				sleeper <- struct{}{}
 			}()
 
@@ -182,6 +186,7 @@ func (p *Process) Start(programCtx context.Context) {
 
 			select {
 			case <-p.restart:
+				time.Sleep(p.buildDelay)
 			case <-programCtx.Done():
 				if ccl != nil {
 					ccl()
