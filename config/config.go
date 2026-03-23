@@ -54,7 +54,7 @@ func DefaultConfig() *Config {
 		},
 		Filewatcher: FileWatcherConfig{
 			IgnoreFile:     []string{"^\\.#", "^#", "~$", "_test\\.go$", "a\\.out(-go-tmp-unmask)?$"},
-			IgnoreFullPath: []string{"/tmp*"},
+			IgnoreFullPath: []string{"/tmp/.*", ".*/\\.git/.*"},
 		},
 		SSE: SSEConfig{
 			Enable:         false,
