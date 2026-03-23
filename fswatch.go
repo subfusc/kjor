@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"path"
+	"path/filepath"
 	"regexp"
 	"time"
 
@@ -98,6 +100,15 @@ func (fsw *FSWatcher) Start(ctx context.Context) {
 	}()
 }
 
+// Watch adds the directory and all the sub directories to watch for events
 func (fsw *FSWatcher) Watch(path string) error {
-	return fsw.Add(path)
+	filepath.WalkDir(path, func(path string, entry fs.DirEntry, err error) error {
+		if entry.IsDir() {
+			return fsw.Add(path)
+		}
+
+		return nil
+	})
+
+	return nil
 }
