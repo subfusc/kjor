@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os/exec"
+	"syscall"
 	"time"
 
 	"github.com/subfusc/kjor/config"
@@ -160,7 +161,15 @@ func (p *Process) Start(programCtx context.Context) {
 		var ccl context.CancelFunc
 
 		for {
-			if p.runner.Exists(false) {
+			startProcess := p.runner.Exists(false)
+
+			if cmd != nil && cmd.Process != nil {
+				if err := cmd.Process.Signal(syscall.Signal(0)); err == nil {
+					startProcess = false
+				}
+			}
+
+			if startProcess {
 				cmd, ccl = p.newCmd(p.runner)
 				err := cmd.Start()
 
