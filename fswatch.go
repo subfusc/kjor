@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -75,6 +76,19 @@ func (fsw *FSWatcher) Ignored(file, fullpath string) bool {
 	return false
 }
 
+func (fsw *FSWatcher) addNewFolder(event fsnotify.Event) {
+	if event.Op.Has(fsnotify.Create) {
+		fstat, err := os.Stat(event.Name)
+		if err != nil {
+			return // If we fail to stat the file it was probably removed again
+		}
+
+		if fstat.IsDir() {
+			fsw.Add(event.Name)
+		}
+	}
+}
+
 func (fsw *FSWatcher) Start(ctx context.Context) {
 	go func() {
 		for {
@@ -86,6 +100,8 @@ func (fsw *FSWatcher) Start(ctx context.Context) {
 				}
 
 				if !event.Op.Has(fsnotify.Chmod) && !fsw.Ignored(path.Base(event.Name), event.Name) {
+					fsw.addNewFolder(event)
+
 					fsw.events <- Event{
 						FileName: event.Name,
 						Type:     uint64(event.Op),
