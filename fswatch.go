@@ -77,7 +77,7 @@ func (fsw *FSWatcher) Ignored(file, fullpath string) bool {
 }
 
 func (fsw *FSWatcher) addNewFolder(event fsnotify.Event) {
-	if event.Op.Has(fsnotify.Create) {
+	if event.Op.Has(fsnotify.Create) || event.Op.Has(fsnotify.Rename) {
 		fstat, err := os.Stat(event.Name)
 		if err != nil {
 			return // If we fail to stat the file it was probably removed again
