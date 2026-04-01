@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -117,6 +119,10 @@ func NewProcess(c *config.Config, logger *slog.Logger, stdOut io.Writer, stdErr 
 
 	if found := p.builder.Exists(false); !found {
 		return nil, fmt.Errorf("Faild to find builder program: [%w]", ProcessBuildFailed)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(p.runner.program), 0750); err != nil {
+		return nil, err
 	}
 
 	return p, nil
