@@ -108,7 +108,12 @@ func (s *SSEServer) Trapper() http.HandlerFunc {
 
 		setSSEHeaders(w.Header())
 		sse := w.(http.Flusher)
-		defer func() { s.logger.Info("Closing socket") }()
+		defer func() {
+			if err := recover(); err != nil {
+				s.logger.Error("Socket closed badly", "err", err)
+			}
+			s.logger.Info("Closing socket")
+		}()
 
 		lastSent := time.Now()
 
