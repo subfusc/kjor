@@ -14,7 +14,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/subfusc/kjor/config"
-	"github.com/subfusc/kjor/sse"
 )
 
 var banner = `
@@ -136,7 +135,7 @@ func mustSetupFSWatch(ctx context.Context, cfg *config.Config, wd string) *FSWat
 	return fw
 }
 
-func start(cfg *config.Config, fw *FSWatcher, proc *Process, sseServer *sse.Server) {
+func start(cfg *config.Config, fw *FSWatcher, proc *Process, sseServer *SSEServer) {
 	for range fw.EventStream() {
 		restarted := false
 
@@ -146,14 +145,17 @@ func start(cfg *config.Config, fw *FSWatcher, proc *Process, sseServer *sse.Serv
 		default:
 		}
 
-		if cfg.SSE.Enable && len(sseServer.MsgChan) < cap(sseServer.MsgChan) {
-			if restarted && cap(sseServer.MsgChan) > len(sseServer.MsgChan){
-				sseServer.MsgChan <- sse.Event{
+		if cfg.SSE.Enable && restarted {
+			event := SSEEvent{
 					Type: "build_action",
-					Source: sse.WATCHER,
+					Source: WATCHER,
 					Data: map[string]any{"restarted": true},
 					When: time.Now(),
-				}
+			}
+
+			select {
+			case sseServer.Messages <- event:
+			default:
 			}
 		}
 	}
@@ -184,10 +186,10 @@ func main() {
 	proc.Start(mainCtx)
 
 	sseLog := slog.New(loggers.SSE)
-	var sseServer *sse.Server
+	var sseServer *SSEServer
 	if cfg.SSE.Enable {
-		sseServer = sse.NewServer(cfg, sseLog)
-		sseServer.Start(mainCtx)
+		sseServer = NewSSEServer(mainCtx, cfg, sseLog)
+		sseServer.Start()
 	}
 
 	start(cfg, fw, proc, sseServer)

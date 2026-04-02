@@ -14,7 +14,7 @@ import (
 	"github.com/subfusc/kjor/config"
 )
 
-type Event struct {
+type FSEvent struct {
 	FileName string // This is only the name as Fanotify does not give out full path without CAP_DAC_SEARCH_FILE
 	Type     uint64
 	When     time.Time
@@ -22,7 +22,7 @@ type Event struct {
 
 type FSWatcher struct {
 	*fsnotify.Watcher
-	events                 chan Event
+	events                 chan FSEvent
 	ignorePatternsFile     []*regexp.Regexp
 	ignorePatternsFullPath []*regexp.Regexp
 }
@@ -50,13 +50,13 @@ func NewFSWatcher(c *config.Config) (*FSWatcher, error) {
 
 	return &FSWatcher{
 		Watcher:        watcher,
-		events:         make(chan Event),
+		events:         make(chan FSEvent),
 		ignorePatternsFile: ignorePatternsFile,
 		ignorePatternsFullPath: ignorePatternsFullPath,
 	}, err
 }
 
-func (fsw *FSWatcher) EventStream() chan Event {
+func (fsw *FSWatcher) EventStream() chan FSEvent {
 	return fsw.events
 }
 
@@ -102,7 +102,7 @@ func (fsw *FSWatcher) Start(ctx context.Context) {
 				if !event.Op.Has(fsnotify.Chmod) && !fsw.Ignored(path.Base(event.Name), event.Name) {
 					fsw.addNewFolder(event)
 
-					fsw.events <- Event{
+					fsw.events <- FSEvent{
 						FileName: event.Name,
 						Type:     uint64(event.Op),
 						When:     time.Now(),
