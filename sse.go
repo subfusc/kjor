@@ -124,6 +124,12 @@ func (s *SSEServer) Trapper() http.HandlerFunc {
 		}{Done: true}
 
 		delayedSend := func(c context.Context, message SSEEvent) {
+			defer func() {
+				if err := recover(); err != nil {
+					s.logger.Error("Socket closed badly", "err", err)
+				}
+			}()
+
 			<-c.Done()
 			switch c.Err() {
 			case context.Canceled:
